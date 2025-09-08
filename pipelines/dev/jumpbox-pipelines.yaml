@@ -1,0 +1,147 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - CRM_Project/pipelines/dev/jumpbox-pipelines.yaml
+
+variables:
+  azureServiceConnection: 'CRM'
+  terraformRelativePath: 'environments/dev'
+  env: 'dev'
+
+stages:
+# ========================
+# Stage 1: Checkout Repo
+# ========================
+- stage: Checkout
+  displayName: 'Checkout Repository & Submodules'
+  jobs:
+    - job: CheckoutJob
+      pool:
+        name: 'CRM'
+      steps:
+        - checkout: self
+          submodules: true
+
+# ========================
+# Stage 2: Download SSH Key
+# ========================
+- stage: DownloadSSHKey
+  displayName: 'Download Secure SSH Key'
+  dependsOn: Checkout
+  jobs:
+    - job: SSHKeyJob
+      pool:
+        name: 'CRM'
+      steps:
+        - task: DownloadSecureFile@1
+          name: sshkey
+          inputs:
+            secureFile: 'id_ed25519.pub'
+
+        - bash: |
+            mkdir -p $(Pipeline.Workspace)/ssh
+            cp "$SECUREFILEPATH" $(Pipeline.Workspace)/ssh/id_ed25519.pub
+            echo "##vso[task.setvariable variable=JUMPBOX_SSH_PUBLIC_KEY_PATH;isOutput=true]$(Pipeline.Workspace)/ssh/id_ed25519.pub"
+          name: SetSSHVar
+          displayName: 'Copy SSH Key to Workspace & Set Variable'
+
+# ========================
+# Stage 3: Terraform Plan
+# ========================
+- stage: TerraformPlan
+  displayName: 'Terraform: Plan (Dev JumpBox)'
+  dependsOn: DownloadSSHKey
+  variables:
+    JUMPBOX_SSH_PUBLIC_KEY_PATH: $[ stageDependencies.DownloadSSHKey.SSHKeyJob.outputs['SetSSHVar.JUMPBOX_SSH_PUBLIC_KEY_PATH'] ]
+  jobs:
+    - job: PlanJob
+      pool:
+        name: 'CRM'
+      steps:
+        - task: AzureCLI@2
+          displayName: 'Terraform Init & Plan'
+          inputs:
+            azureSubscription: $(azureServiceConnection)
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -e
+
+              export JUMPBOX_SSH_PUBLIC_KEY_PATH="$JUMPBOX_SSH_PUBLIC_KEY_PATH"
+              export JUMPBOX_CLOUD_INIT_FILE="$(System.DefaultWorkingDirectory)/modules/jumpbox/files/cloud-init-jumpbox.yaml"
+
+              # Export ARM creds from service connection
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+              TF_DIR=$(System.DefaultWorkingDirectory)/$(terraformRelativePath)
+
+              echo "==> Terraform dir: $TF_DIR"
+              echo "==> SSH key path: $JUMPBOX_SSH_PUBLIC_KEY_PATH"
+              echo "==> Cloud-init file: $JUMPBOX_CLOUD_INIT_FILE"
+
+              ls -l "$JUMPBOX_SSH_PUBLIC_KEY_PATH"
+              ls -l "$JUMPBOX_CLOUD_INIT_FILE"
+
+              terraform -chdir=$TF_DIR init -upgrade
+              terraform -chdir=$TF_DIR plan -out=tfplan \
+                -var="deploy_network=true" \
+                -var="deploy_dns=true" \
+                -var="deploy_aks=true" \
+                -var="deploy_node_pool=true" \
+                -var="deploy_acr=true" \
+                -var="deploy_aks_acr_binding=true" \
+                -var="deploy_bastion=true" \
+                -var="deploy_jumpbox=true" \
+                -var="deploy_jumpbox_identity=true" \
+                -var="env=$(env)" \
+                -var="jumpbox_ssh_public_key_path=$JUMPBOX_SSH_PUBLIC_KEY_PATH" \
+                -var="jumpbox_cloud_init_file=$JUMPBOX_CLOUD_INIT_FILE" \
+                -var-file="jumpbox.tfvars" \
+                -var-file="aks.tfvars" \
+                -var-file="dns-zones.tfvars" \
+                -var-file="network.tfvars" \
+                -var-file="aks-node-pools.tfvars" \
+                -var-file="acr.tfvars" \
+                -var-file="bastion.tfvars" \
+                -var-file="identity.tfvars"
+
+# ========================
+# Stage 4: Terraform Apply
+# ========================
+- stage: TerraformApply
+  displayName: 'Terraform: Apply (Dev JumpBox)'
+  dependsOn: TerraformPlan
+  variables:
+    JUMPBOX_SSH_PUBLIC_KEY_PATH: $[ stageDependencies.DownloadSSHKey.SSHKeyJob.outputs['SetSSHVar.JUMPBOX_SSH_PUBLIC_KEY_PATH'] ]
+  jobs:
+    - job: ApplyJob
+      pool:
+        name: 'CRM'
+      steps:
+        - task: AzureCLI@2
+          displayName: 'Terraform Init & Apply'
+          inputs:
+            azureSubscription: $(azureServiceConnection)
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              set -e
+
+              export JUMPBOX_SSH_PUBLIC_KEY_PATH="$JUMPBOX_SSH_PUBLIC_KEY_PATH"
+              export JUMPBOX_CLOUD_INIT_FILE="$(System.DefaultWorkingDirectory)/modules/jumpbox/files/cloud-init-jumpbox.yaml"
+
+              export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+              export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+              TF_DIR=$(System.DefaultWorkingDirectory)/$(terraformRelativePath)
+
+              echo "==> Terraform dir: $TF_DIR"
+              echo "==> SSH key path: $JUMPBOX_SSH_PUBLIC_KEY_PATH"
+              echo "==> Cloud-init file: $JUMPBOX_CLOUD_INIT_FILE"
+
+              terraform -chdir=$TF_DIR init -upgrade
+              terraform -chdir=$TF_DIR apply -auto-approve tfplan

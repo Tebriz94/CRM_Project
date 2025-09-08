@@ -1,0 +1,71 @@
+# CRM_Project/pipelines/dev/sa-pipelines.yaml
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - CRM_Project/pipelines/dev/sa-pipelines.yaml
+
+variables:
+- group: terraform-secrets   # Additional secrets if any
+
+stages:
+- stage: Terraform
+  displayName: "Terraform Apply"
+  jobs:
+  - job: TerraformApply
+    pool:
+      name: 'CRM'
+    steps:
+
+    # 1️⃣ Checkout repository
+    - checkout: self
+
+    # 2️⃣ Debug: check repository contents
+    - script: |
+        echo "Build.SourcesDirectory: $(Build.SourcesDirectory)"
+        ls -R $(Build.SourcesDirectory)
+      displayName: 'Debug Repo Contents'
+
+    # 3️⃣ Verify Terraform directory and files
+    - script: |
+        TARGET_DIR="$(Build.SourcesDirectory)/sa/dev"
+        echo "Checking Terraform directory: $TARGET_DIR"
+        if [ ! -d "$TARGET_DIR" ]; then
+          echo "ERROR: Directory not found: $TARGET_DIR"
+          ls -la $(Build.SourcesDirectory)
+          exit 1
+        fi
+
+        TF_FILES=$(ls $TARGET_DIR/*.tf 2>/dev/null || true)
+        if [ -z "$TF_FILES" ]; then
+          echo "ERROR: No Terraform configuration files (*.tf) found in $TARGET_DIR"
+          exit 1
+        fi
+        echo "Terraform directory and configuration files exist."
+      displayName: 'Verify Terraform Directory and Files'
+
+    # 4️⃣ Terraform Init, Plan & Apply
+    - task: AzureCLI@2
+      displayName: 'Terraform Init, Plan & Apply via Service Connection'
+      inputs:
+        azureSubscription: 'CRM'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Export active subscription and tenant ID from Azure CLI to Terraform environment variables
+          export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+          cd $(Build.SourcesDirectory)/sa/dev
+
+          echo "Running Terraform Init..."
+          terraform init
+
+          echo "Running Terraform Plan..."
+          terraform plan -out=tfplan
+
+          echo "Running Terraform Apply..."
+          terraform apply -auto-approve tfplan

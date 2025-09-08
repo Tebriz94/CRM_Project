@@ -1,0 +1,55 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - CRM_Project/pipelines/dev/keyvault-pipelines.yaml
+
+variables:
+  azureServiceConnection: 'CRM'
+  terraformRelativePath: 'environments/dev'
+  env: 'dev'
+
+stages:
+- stage: KeyVault
+  displayName: 'Terraform: KeyVault'
+  jobs:
+  - job: KeyVault
+    pool:
+      name: 'CRM'
+    steps:
+      - checkout: self
+        submodules: true
+
+      - task: AzureCLI@2
+        displayName: 'Terraform Init, Plan & Apply (AKS)'
+        inputs:
+          azureSubscription: $(azureServiceConnection)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set -e
+            export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+            export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) init -upgrade
+
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) plan -out=tfplan \
+              -var="deploy_network=true" \
+              -var="deploy_dns=true" \
+              -var="deploy_aks=true" \
+              -var="deploy_node_pool=true" \
+              -var="deploy_acr=true" \
+              -var="deploy_keyvault=true" \
+              -var="deploy_keyvault_role_assigment=true" \
+              -var="deploy_aks_acr_binding=true" \
+              -var="env=$(env)" \
+              -var-file="aks.tfvars" \
+              -var-file="dns-zones.tfvars" \
+              -var-file="network.tfvars" \
+              -var-file="aks-node-pools.tfvars" \
+              -var-file="acr.tfvars" \
+              -var-file="keyvault.tfvars"
+
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) apply -auto-approve tfplan

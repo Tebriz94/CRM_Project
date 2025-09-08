@@ -1,0 +1,47 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - CRM_Project/pipelines/dev/aks-pipelines.yaml
+
+variables:
+  azureServiceConnection: 'CRM'
+  terraformRelativePath: 'environments/dev'
+  env: 'dev'
+
+stages:
+- stage: AKS
+  displayName: 'Terraform: Dev AKS'
+  jobs:
+  - job: aks
+    pool:
+      name: 'CRM'
+    steps:
+      - checkout: self
+        submodules: true
+
+      - task: AzureCLI@2
+        displayName: 'Terraform Init, Plan & Apply (AKS)'
+        inputs:
+          azureSubscription: $(azureServiceConnection)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set -e
+            export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+            export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) init -upgrade
+
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) plan -out=tfplan \
+              -var="deploy_network=true" \
+              -var="deploy_dns=true" \
+              -var="deploy_aks=true" \
+              -var="env=$(env)" \
+              -var-file="aks.tfvars" \
+              -var-file="network.tfvars" \
+              -var-file="dns-zones.tfvars"
+
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) apply -auto-approve tfplan

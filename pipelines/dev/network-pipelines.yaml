@@ -1,0 +1,55 @@
+# CRM_Project/pipelines/dev/sa-pipelines.yaml
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - CRM_Project/pipelines/dev/network-pipelines.yaml
+
+variables:
+  azureServiceConnection: 'CRM'             # Azure DevOps Service Connection
+  terraformRelativePath: 'environments/dev' # Path to Terraform configs
+  env: 'dev'
+
+stages:
+- stage: Network
+  displayName: 'Terraform: Dev Environment'
+  jobs:
+  - job: terraform
+    displayName: 'Terraform Init/Plan/Apply'
+    pool:
+      name: 'CRM'
+    steps:
+
+      # 1️⃣ Checkout repository (including all modules)
+      - checkout: self
+        submodules: true
+
+      # 2️⃣ Terraform Init / Plan / Apply
+      - task: AzureCLI@2
+        displayName: 'Terraform Init, Plan & Apply'
+        inputs:
+          azureSubscription: $(azureServiceConnection)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set -e  # Exit on any error
+
+            # Export subscription and tenant ID from Azure CLI
+            export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+            export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+
+            # Terraform commands using -chdir (cwd-independent)
+            echo "Running Terraform Init..."
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) init -upgrade
+
+            echo "Running Terraform Plan..."
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) plan -out=tfplan \
+              -var-file="network.tfvars" \
+              -var="deploy_network=true" \
+              -var="env=$(env)"
+
+            echo "Running Terraform Apply..."
+            terraform -chdir=$(System.DefaultWorkingDirectory)/$(terraformRelativePath) apply -auto-approve tfplan
