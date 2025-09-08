@@ -1,0 +1,14 @@
+📁 modules/
+│
+├── aks/               # AKS cluster config (private API server, identity, tags)
+├── network/           # VNet, subnets, NSGs, route tables
+├── acr/               # Azure Container Registry
+│
+├── private-dns/       # Private DNS zone for AKS + link to VNet
+├── firewall/          # Azure Firewall or Azure Application Gateway (optional)
+├── log-analytics/     # Log Analytics workspace for AKS monitoring
+├── keyvault/          # Store secrets, certs, pull secrets
+├── managed-identity/  # User-assigned identity for AKS & pipelines
+├── storage/           # Blob storage for Terraform state or backups
+├── rbac/              # Role assignments for Azure AD integration
+└── bastion/           # Bastion host (optional for SSH access without public IPs)

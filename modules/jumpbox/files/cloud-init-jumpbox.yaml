@@ -1,0 +1,27 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+- azure-cli
+- apt-transport-https
+- ca-certificates
+- curl
+- gnupg
+- lsb-release
+- jq
+- git
+
+runcmd:
+# Kubectl 
+- curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+- install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+# AKS CLI 
+- az aks install-cli
+
+# Optional: Bash path
+- echo 'export PATH=$PATH:/usr/local/bin' >> /etc/profile.d/custom_path.sh
+
+# Test
+- kubectl version --client
+- az version
