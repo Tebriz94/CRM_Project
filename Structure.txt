@@ -1,0 +1,54 @@
+📁 devops-demo-project/
+│
+├── 📁 app/
+│   ├── 📁 src/                              # Your actual ASP.NET Core project
+│   │   └── SneatAdminTemplate/             # Unzipped template here
+│   │       ├── Controllers/
+│   │       ├── Views/
+│   │       ├── wwwroot/
+│   │       └── SneatAdminTemplate.csproj
+│   ├── Dockerfile                          # For containerizing the app
+│   └── k8s/
+│       ├── deployment.yaml
+│       ├── service.yaml
+│       └── ingress.yaml
+│
+├── 📁 modules/
+│   ├── aks/
+│   ├── network/
+│   ├── acr/
+│   ├── keyvault/
+│   └── private-dns/
+│
+├── 📁 environments/
+│   ├── dev/
+│   ├── stage/
+│   └── prod/
+│
+├── 📁 pipelines/
+│   ├── azure-pipelines.yaml
+│   └── templates/
+│
+├── 📁 scripts/
+│   ├── build.sh
+│   ├── deploy-dev.sh
+│   └── stress-test.sh
+│
+├── 📁 argocd/
+│   ├── app.yaml
+│   └── overlays/
+│       ├── dev/
+│       └── prod/
+│
+├── 📁 security/
+│   ├── trivy-results.txt
+│   └── kube-bench-results.txt
+│
+├── 📁 docs/
+│   ├── architecture.png
+│   ├── aks-notes.md
+│   └── pipelines.md
+│
+├── .gitignore
+├── README.md
+└── Makefile (optional)
